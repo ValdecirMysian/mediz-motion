@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Player } from '@remotion/player';
 import { VideoMotion } from '../../remotion/VideoMotion';
+import AssetPicker from '../../components/AssetPicker';
 
 // ============================================================================
 // TIPOS
@@ -113,20 +114,24 @@ export default function CriarVideo() {
   const [isRendering, setIsRendering] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
+  // Asset Picker State
+  const [showAssetPicker, setShowAssetPicker] = useState(false);
+  const [currentProductIndex, setCurrentProductIndex] = useState<number | null>(null);
+
   // Carrega templates do localStorage ao montar
   useEffect(() => {
-    const carregarTemplates = () => {
+    const carregarTemplates = async () => {
       try {
-        const salvos = JSON.parse(localStorage.getItem('mediz-templates') || '[]');
+        const response = await fetch('/api/templates/list');
+        const data = await response.json();
         
-        // Se não tiver nenhum, usa o template padrão
-        if (salvos.length === 0) {
-          setTemplatesDisponiveis(TEMPLATES);
+        if (data.templates && data.templates.length > 0) {
+          setTemplatesDisponiveis(data.templates);
+          console.log(`📦 ${data.templates.length} templates carregados do servidor`);
         } else {
-          setTemplatesDisponiveis(salvos);
+          setTemplatesDisponiveis(TEMPLATES);
+          console.log('📦 Usando templates padrão');
         }
-        
-        console.log(`📦 ${salvos.length} templates carregados`);
       } catch (error) {
         console.error('Erro ao carregar templates:', error);
         setTemplatesDisponiveis(TEMPLATES);
@@ -139,6 +144,16 @@ export default function CriarVideo() {
   // ========================================================================
   // FUNÇÕES
   // ========================================================================
+
+  const handleAssetSelect = (url: string) => {
+    if (currentProductIndex !== null) {
+      const novosProdutos = [...produtos];
+      novosProdutos[currentProductIndex].imagem = url;
+      setProdutos(novosProdutos);
+      setShowAssetPicker(false);
+      setCurrentProductIndex(null);
+    }
+  };
 
   const handleUploadImagem = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -244,18 +259,18 @@ export default function CriarVideo() {
   // ========================================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+    <div className="min-h-screen bg-gray-900 text-white">
       {/* HEADER */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-gray-800 border-b border-gray-700 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <img src="/logo.png" alt="Mediz Logo" className="h-12" />
               <div>
-                <h1 className="text-xl font-bold text-gray-900 hidden">
+                <h1 className="text-xl font-bold text-white hidden">
                   Criar Vídeo de Oferta
                 </h1>
-                <p className="text-sm text-gray-600 font-medium border-l-2 border-gray-300 pl-3 ml-1">
+                <p className="text-sm text-gray-400 font-medium border-l-2 border-gray-600 pl-3 ml-1">
                   Criador de Vídeos
                 </p>
               </div>
@@ -263,17 +278,17 @@ export default function CriarVideo() {
             
             {/* Stepper */}
             <div className="flex items-center gap-4">
-              <div className={`flex items-center gap-2 ${etapa === 'template' ? 'text-blue-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${etapa === 'template' ? 'bg-blue-600 text-white' : 'bg-gray-300'}`}>
+              <div className={`flex items-center gap-2 ${etapa === 'template' ? 'text-blue-400' : 'text-gray-500'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${etapa === 'template' ? 'bg-blue-600 text-white' : 'bg-gray-700'}`}>
                   1
                 </div>
                 <span className="font-medium">Escolher Template</span>
               </div>
               
-              <div className="w-12 h-0.5 bg-gray-300"></div>
+              <div className="w-12 h-0.5 bg-gray-700"></div>
               
-              <div className={`flex items-center gap-2 ${etapa === 'dados' ? 'text-blue-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${etapa === 'dados' ? 'bg-blue-600 text-white' : 'bg-gray-300'}`}>
+              <div className={`flex items-center gap-2 ${etapa === 'dados' ? 'text-blue-400' : 'text-gray-500'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${etapa === 'dados' ? 'bg-blue-600 text-white' : 'bg-gray-700'}`}>
                   2
                 </div>
                 <span className="font-medium">Adicionar Produtos</span>
@@ -288,13 +303,13 @@ export default function CriarVideo() {
         {/* ETAPA 1: ESCOLHER TEMPLATE */}
         {etapa === 'template' && (
           <div>
-            <h2 className="text-xl font-bold mb-6">Escolha o Modelo do Vídeo</h2>
+            <h2 className="text-xl font-bold mb-6 text-white">Escolha o Modelo do Vídeo</h2>
             
             {templatesDisponiveis.length === 0 ? (
-              <div className="text-center py-12 bg-white rounded-xl">
-                <p className="text-gray-500 mb-4">Nenhum template criado ainda.</p>
-                <p className="text-sm text-gray-400">
-                  Vá para <strong>/admin/motion-builder</strong> e crie seu primeiro template!
+              <div className="text-center py-12 bg-gray-800 rounded-xl border border-gray-700">
+                <p className="text-gray-400 mb-4">Nenhum template criado ainda.</p>
+                <p className="text-sm text-gray-500">
+                  Vá para <strong className="text-gray-300">/admin/motion-builder</strong> e crie seu primeiro template!
                 </p>
               </div>
             ) : (
@@ -309,24 +324,46 @@ export default function CriarVideo() {
                         setTemplateSelecionado(template);
                         setEtapa('dados');
                       }}
-                      className={`bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-1 ${
+                      className={`bg-gray-800 rounded-xl shadow-lg overflow-hidden hover:shadow-2xl hover:bg-gray-750 transition-all transform hover:-translate-y-1 text-left border border-gray-700 ${
                         templateSelecionado?.id === template.id ? 'ring-4 ring-blue-500' : ''
                       }`}
                     >
                       {/* Thumbnail */}
-                      <div className="aspect-video bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
-                        <div className="text-white text-6xl">🎬</div>
+                      <div className="aspect-video bg-gray-900 flex items-center justify-center overflow-hidden relative">
+                        {template.thumbnail ? (
+                          <img 
+                            src={template.thumbnail} 
+                            alt={template.nome} 
+                            className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                            onError={(e) => {
+                              // Fallback se a imagem falhar
+                              e.currentTarget.style.display = 'none';
+                              e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-purple-900', 'to-blue-900');
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-700 flex items-center justify-center">
+                            <div className="text-gray-600 text-6xl">🎬</div>
+                          </div>
+                        )}
+                        
+                        {/* Badge de Duração */}
+                        <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded font-mono">
+                          {template.duracao}s
+                        </div>
                       </div>
                       
                       {/* Info */}
                       <div className="p-4">
-                        <h3 className="font-bold text-lg">{template.nome}</h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {qtdProdutos} produtos • {template.duracao}s
+                        <h3 className="font-bold text-lg text-white">{template.nome}</h3>
+                        <p className="text-sm text-gray-400 mt-1 flex items-center gap-2">
+                          <span className="bg-gray-700 px-2 py-0.5 rounded text-xs text-gray-300">
+                            {qtdProdutos} produtos
+                          </span>
                         </p>
                         
-                        <div className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-center">
-                          Escolher Este
+                        <div className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-center transition-colors">
+                          Escolher Este Modelo
                         </div>
                       </div>
                     </button>
@@ -343,35 +380,35 @@ export default function CriarVideo() {
             {/* COLUNA ESQUERDA: Formulário */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold">Adicione seus Produtos</h2>
+                <h2 className="text-xl font-bold text-white">Adicione seus Produtos</h2>
                 <button
                   onClick={() => setEtapa('template')}
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                  className="text-blue-400 hover:text-blue-300 text-sm font-medium transition"
                 >
                   ← Trocar Template
                 </button>
               </div>
 
               {/* Opção de Remover Fundo */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+              <div className="bg-blue-900/20 border border-blue-800/50 rounded-lg p-4 flex items-center gap-3">
                 <input
                   type="checkbox"
                   id="removerFundo"
                   checked={removerFundo}
                   onChange={(e) => setRemoverFundo(e.target.checked)}
-                  className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                  className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 bg-gray-800 border-gray-600"
                 />
-                <label htmlFor="removerFundo" className="text-sm text-gray-700 cursor-pointer">
-                  <span className="font-bold text-blue-800">✨ Remover Fundo Automaticamente</span>
-                  <p className="text-xs text-gray-500">Ao marcar, as novas imagens enviadas terão o fundo removido pela IA.</p>
+                <label htmlFor="removerFundo" className="text-sm cursor-pointer flex-1">
+                  <span className="font-bold text-blue-300 block mb-0.5">✨ Remover Fundo Automaticamente</span>
+                  <span className="text-xs text-blue-200/70">Ao marcar, as novas imagens enviadas terão o fundo removido pela IA.</span>
                 </label>
               </div>
 
               {/* Cards de Produtos */}
               {produtos.slice(0, qtdProdutos).map((produto, index) => (
-                <div key={index} className="bg-white rounded-xl shadow-md p-6">
+                <div key={index} className="bg-gray-800 rounded-xl shadow-md p-6 border border-gray-700">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-lg flex items-center gap-2">
+                    <h3 className="font-bold text-lg flex items-center gap-2 text-white">
                       <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm">
                         {index + 1}
                       </span>
@@ -383,14 +420,14 @@ export default function CriarVideo() {
                       className={`
                         flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm border
                         ${removerFundo 
-                          ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' 
-                          : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                          ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-500' 
+                          : 'bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600'
                         }
                       `}
                     >
                       <span>{removerFundo ? '✨ Remoção Ativa' : '✂️ Remover Fundo'}</span>
                       {/* Toggle visual simplificado */}
-                      <div className={`w-8 h-4 rounded-full relative transition-colors ${removerFundo ? 'bg-white/30' : 'bg-gray-300'}`}>
+                      <div className={`w-8 h-4 rounded-full relative transition-colors ${removerFundo ? 'bg-white/30' : 'bg-gray-900'}`}>
                         <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-all ${removerFundo ? 'left-4.5' : 'left-0.5'}`} style={{ left: removerFundo ? '18px' : '2px' }}></div>
                       </div>
                     </button>
@@ -398,41 +435,43 @@ export default function CriarVideo() {
 
                   {/* Upload de Imagem */}
                   <div className="mb-4">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-gray-300 mb-2">
                       📸 Foto do Produto
                     </label>
                     
                     {processingIds.includes(index) ? (
-                      <div className="w-full h-48 bg-blue-50 rounded-lg flex flex-col items-center justify-center animate-pulse border-2 border-blue-200 border-dashed">
+                      <div className="w-full h-48 bg-blue-900/20 rounded-lg flex flex-col items-center justify-center animate-pulse border-2 border-blue-500/50 border-dashed">
                         <div className="text-3xl animate-spin mb-2">✨</div>
-                        <span className="text-sm font-bold text-blue-600">Removendo fundo...</span>
-                        <span className="text-xs text-blue-400 mt-1">Aguarde um momento</span>
+                        <span className="text-sm font-bold text-blue-400">Removendo fundo...</span>
+                        <span className="text-xs text-blue-300/70 mt-1">Aguarde um momento</span>
                       </div>
                     ) : produto.imagem ? (
-                      <div className="relative">
-                        <img
-                          src={produto.imagem}
-                          alt={`Produto ${index + 1}`}
-                          className="w-full h-48 object-contain bg-gray-50 rounded-lg"
-                        />
+                      <div className="relative group">
+                        <div className="w-full h-48 bg-gray-900 rounded-lg border border-gray-600 flex items-center justify-center overflow-hidden">
+                          <img
+                            src={produto.imagem}
+                            alt={`Produto ${index + 1}`}
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        </div>
                         <button
                           onClick={() => {
                             const novosProdutos = [...produtos];
                             novosProdutos[index].imagem = '';
                             setProdutos(novosProdutos);
                           }}
-                          className="absolute top-2 right-2 bg-red-500 text-white w-8 h-8 rounded-full hover:bg-red-600"
+                          className="absolute top-2 right-2 bg-red-600 text-white w-8 h-8 rounded-full hover:bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                         >
                           ✕
                         </button>
                       </div>
                     ) : (
-                      <label className="border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition">
-                        <div className="text-4xl mb-2">📦</div>
-                        <div className="text-sm text-gray-600 mb-1">
+                      <label className="border-2 border-dashed border-gray-600 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-700/50 transition group">
+                        <div className="text-4xl mb-2 group-hover:scale-110 transition-transform">📦</div>
+                        <div className="text-sm text-gray-300 mb-1 font-medium">
                           Clique para adicionar foto
                         </div>
-                        <div className="text-xs text-gray-400">
+                        <div className="text-xs text-gray-500">
                           PNG, JPG até 5MB
                         </div>
                         <input
@@ -447,7 +486,7 @@ export default function CriarVideo() {
 
                   {/* Nome do Produto (opcional) */}
                   <div className="mb-4">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-gray-300 mb-2">
                       Nome do Produto (opcional)
                     </label>
                     <input
@@ -455,23 +494,23 @@ export default function CriarVideo() {
                       placeholder="Ex: Dipirona 500mg"
                       value={produto.nome}
                       onChange={(e) => atualizarProduto(index, 'nome', e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                     />
                   </div>
 
                   {/* Preço */}
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-gray-300 mb-2">
                       💰 Preço *
                     </label>
                     <div className="flex items-center gap-2">
-                      <span className="text-xl font-bold text-gray-700">R$</span>
+                      <span className="text-xl font-bold text-gray-400">R$</span>
                       <input
                         type="text"
                         placeholder="9,90"
                         value={produto.preco}
                         onChange={(e) => atualizarProduto(index, 'preco', e.target.value)}
-                        className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg text-2xl font-bold focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="flex-1 px-4 py-3 bg-gray-900 border-2 border-gray-600 rounded-lg text-2xl font-bold text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                       />
                     </div>
                   </div>
@@ -479,8 +518,8 @@ export default function CriarVideo() {
               ))}
 
               {/* WhatsApp */}
-              <div className="bg-white rounded-xl shadow-md p-6">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <div className="bg-gray-800 rounded-xl shadow-md p-6 border border-gray-700">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-white">
                   📱 WhatsApp
                 </h3>
                 <input
@@ -488,14 +527,14 @@ export default function CriarVideo() {
                   placeholder="(45) 99999-9999"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-gray-900 border-2 border-gray-600 rounded-lg text-lg text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
               </div>
 
               {/* Localização (se o template tiver) */}
               {templateSelecionado.camadas?.some(c => c.tipo === 'localizacao') && (
-                <div className="bg-white rounded-xl shadow-md p-6">
-                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <div className="bg-gray-800 rounded-xl shadow-md p-6 border border-gray-700">
+                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-white">
                     📍 Localização
                   </h3>
                   <input
@@ -503,7 +542,7 @@ export default function CriarVideo() {
                     placeholder="Rua das Flores, 123 - Centro"
                     value={localizacao}
                     onChange={(e) => setLocalizacao(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-3 bg-gray-900 border-2 border-gray-600 rounded-lg text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   />
                 </div>
               )}
@@ -516,8 +555,8 @@ export default function CriarVideo() {
                   className={`
                     w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all
                     ${isRendering 
-                      ? 'bg-gray-400 cursor-wait' 
-                      : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-xl transform hover:-translate-y-0.5'
+                      ? 'bg-gray-700 text-gray-400 cursor-wait' 
+                      : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-xl transform hover:-translate-y-0.5 hover:from-blue-500 hover:to-purple-500'
                     }
                   `}
                 >
@@ -530,23 +569,23 @@ export default function CriarVideo() {
                   )}
                 </button>
               ) : (
-                <div className="space-y-4">
-                  <div className="bg-green-100 border border-green-300 text-green-800 p-4 rounded-xl text-center">
+                <div className="space-y-4 animate-fade-in">
+                  <div className="bg-green-900/30 border border-green-500/30 text-green-300 p-4 rounded-xl text-center">
                     <h3 className="font-bold text-lg mb-1">✅ Vídeo Pronto!</h3>
-                    <p className="text-sm">Seu vídeo foi renderizado com sucesso.</p>
+                    <p className="text-sm opacity-80">Seu vídeo foi renderizado com sucesso.</p>
                   </div>
                   
                   <a
                     href={videoUrl}
                     download={`oferta-mediz-${Date.now()}.mp4`}
-                    className="block w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 text-center transition-all"
+                    className="block w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-green-500 text-center transition-all transform hover:-translate-y-0.5"
                   >
                     ⬇️ Baixar Vídeo Agora
                   </a>
 
                   <button
                     onClick={() => setVideoUrl(null)}
-                    className="block w-full text-gray-500 text-sm hover:underline text-center"
+                    className="block w-full text-gray-500 text-sm hover:text-white hover:underline text-center transition"
                   >
                     Gerar outro vídeo
                   </button>
@@ -556,14 +595,14 @@ export default function CriarVideo() {
 
             {/* COLUNA DIREITA: Preview */}
             <div className="sticky top-8">
-              <div className="bg-white rounded-xl shadow-lg p-4">
-                <h3 className="font-bold mb-3 flex items-center justify-between">
+              <div className="bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-700">
+                <h3 className="font-bold mb-3 flex items-center justify-between text-white">
                   <span className="text-sm">👁️ Preview do Vídeo</span>
-                  <span className="text-xs text-gray-500">Tempo real</span>
+                  <span className="text-xs text-gray-400 bg-gray-900 px-2 py-1 rounded">Tempo real</span>
                 </h3>
 
                 {/* Player do Remotion - MENOR */}
-                <div className="bg-black rounded-lg overflow-hidden" style={{ width: '100%', maxWidth: '280px', margin: '0 auto' }}>
+                <div className="bg-black rounded-lg overflow-hidden ring-1 ring-gray-700" style={{ width: '100%', maxWidth: '280px', margin: '0 auto' }}>
                   <Player
                     component={VideoMotion}
                     inputProps={{
@@ -588,12 +627,12 @@ export default function CriarVideo() {
                 </div>
 
                 {/* Dicas */}
-                <div className="mt-3 bg-blue-50 rounded-lg p-3">
-                  <p className="text-xs text-blue-800 font-medium mb-1">💡 Dicas Rápidas:</p>
-                  <ul className="text-xs text-blue-700 space-y-1">
-                    <li>• Fotos com fundo branco</li>
-                    <li>• Preço: 9,90 (com vírgula)</li>
-                    <li>• Aperte ▶️ pra ver animações</li>
+                <div className="mt-4 bg-blue-900/20 rounded-lg p-3 border border-blue-800/30">
+                  <p className="text-xs text-blue-300 font-bold mb-2">💡 Dicas Rápidas:</p>
+                  <ul className="text-xs text-blue-200/80 space-y-1.5 list-disc pl-4">
+                    <li>Fotos com fundo transparente ficam melhores</li>
+                    <li>Use vírgula no preço (ex: 9,90)</li>
+                    <li>Aperte ▶️ para ver as animações</li>
                   </ul>
                 </div>
               </div>
@@ -601,6 +640,15 @@ export default function CriarVideo() {
           </div>
         )}
       </div>
+
+      {/* ASSET PICKER MODAL */}
+      {showAssetPicker && (
+        <AssetPicker
+          folder="products"
+          onSelect={handleAssetSelect}
+          onClose={() => setShowAssetPicker(false)}
+        />
+      )}
     </div>
   );
 }

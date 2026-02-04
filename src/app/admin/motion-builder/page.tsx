@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
+import AssetPicker from '../../../components/AssetPicker';
 
 // ============================================================================
 // TIPOS E CONSTANTES
@@ -73,6 +74,7 @@ interface Layer {
 interface Template {
   id: string;
   nome: string;
+  thumbnail?: string;
   videoFundo: string;
   duracao: number; // segundos
   fps: number;
@@ -158,6 +160,15 @@ export default function AdminMotionBuilder() {
   const [scale, setScale] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Asset Picker State
+  const [showAssetPicker, setShowAssetPicker] = useState(false);
+  const [assetPickerConfig, setAssetPickerConfig] = useState<{ folder: string, onSelect: (url: string) => void } | null>(null);
+
+  const openAssetPicker = (folder: string, callback: (url: string) => void) => {
+    setAssetPickerConfig({ folder, onSelect: callback });
+    setShowAssetPicker(true);
+  };
+
   // Calcula escala para preview
   useEffect(() => {
     const updateScale = () => {
@@ -181,27 +192,36 @@ export default function AdminMotionBuilder() {
     carregarTemplatesSalvos();
   }, []);
 
-  const carregarTemplatesSalvos = () => {
+  const carregarTemplatesSalvos = async () => {
     try {
-      const salvos = JSON.parse(localStorage.getItem('mediz-templates') || '[]');
-      setTemplatesSalvos(salvos);
-      console.log(`📦 ${salvos.length} templates carregados do localStorage`);
+      const response = await fetch('/api/templates/list');
+      const data = await response.json();
+      
+      if (data.templates) {
+        setTemplatesSalvos(data.templates);
+        console.log(`📦 ${data.templates.length} templates carregados do servidor`);
+      }
     } catch (error) {
       console.error('Erro ao carregar templates:', error);
     }
   };
 
-  const deletarTemplateSalvo = (id: string, e: React.MouseEvent) => {
+  const deletarTemplateSalvo = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Tem certeza que deseja excluir este template?')) return;
 
     try {
-      const novos = templatesSalvos.filter(t => t.id !== id);
-      localStorage.setItem('mediz-templates', JSON.stringify(novos));
-      setTemplatesSalvos(novos);
-      alert('Template excluído com sucesso!');
+      const response = await fetch(`/api/templates/delete?id=${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) throw new Error('Falha ao excluir');
+      
+      setTemplatesSalvos(prev => prev.filter(t => t.id !== id));
+      
     } catch (error) {
       console.error('Erro ao excluir:', error);
+      alert('Erro ao excluir template.');
     }
   };
 
@@ -272,11 +292,11 @@ export default function AdminMotionBuilder() {
     }
   };
 
-  const salvarTemplate = () => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const salvarTemplate = async () => {
     try {
-      // Salva no localStorage
-      const templates = JSON.parse(localStorage.getItem('mediz-templates') || '[]');
-      
+      setIsSaving(true);
       // Se for um novo template (id padrão), gera um ID único
       let templateParaSalvar = { ...template };
       if (templateParaSalvar.id === 'novo-template') {
@@ -284,24 +304,31 @@ export default function AdminMotionBuilder() {
         setTemplate(templateParaSalvar); // Atualiza estado local também
       }
       
-      // Verifica se já existe (pelo ID)
-      const index = templates.findIndex((t: Template) => t.id === templateParaSalvar.id);
+      const response = await fetch('/api/templates/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(templateParaSalvar)
+      });
+
+      if (!response.ok) throw new Error('Falha ao salvar');
+
+      const data = await response.json();
+
+      console.log('✅ Template salvo no servidor:', templateParaSalvar);
       
-      if (index >= 0) {
-        templates[index] = templateParaSalvar;
-      } else {
-        templates.push(templateParaSalvar);
+      // Atualiza lista e estado local com a thumbnail gerada
+      if (data.thumbnail) {
+        setTemplate(prev => ({ ...prev, thumbnail: data.thumbnail }));
       }
       
-      localStorage.setItem('mediz-templates', JSON.stringify(templates));
-      
-      console.log('✅ Template salvo no localStorage:', templateParaSalvar);
-      carregarTemplatesSalvos(); // Atualiza lista
-      alert(`✅ Template "${templateParaSalvar.nome}" salvo com sucesso!\n\nAgora vá para a página "Criar Vídeo" para testar.`);
+      await carregarTemplatesSalvos(); // Atualiza lista
+      alert(`✅ Template "${templateParaSalvar.nome}" salvo com sucesso!`);
       
     } catch (error) {
       console.error('❌ Erro ao salvar:', error);
-      alert('Erro ao salvar template! (Verifique se o tamanho das imagens não é muito grande para o LocalStorage)');
+      alert('Erro ao salvar template!');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -522,52 +549,75 @@ export default function AdminMotionBuilder() {
   const camadaAtual = getCamadaSelecionadaObj();
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-900 text-white">
       {/* HEADER */}
-      <header className="bg-white border-b p-4 flex justify-between items-center">
+      <header className="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <img src="/logo.png" alt="Mediz Logo" className="h-10" />
-          <div className="h-6 w-px bg-gray-300 mx-2"></div>
-          <h1 className="text-xl font-bold text-gray-700">Motion Builder</h1>
+          <div className="h-6 w-px bg-gray-600 mx-2"></div>
+          <h1 className="text-xl font-bold text-gray-100">Motion Builder</h1>
           <input
             type="text"
             value={template.nome}
             onChange={(e) => setTemplate({ ...template, nome: e.target.value })}
-            className="px-3 py-1 border rounded"
+            className="px-3 py-1 border border-gray-600 bg-gray-700 text-white rounded focus:ring-2 focus:ring-blue-500 outline-none"
             placeholder="Nome do template"
           />
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowLoadModal(true)}
-            className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 border"
+            className="bg-gray-700 text-gray-200 px-4 py-2 rounded-lg font-bold hover:bg-gray-600 border border-gray-600 transition"
           >
             📂 Abrir
           </button>
           <button
             onClick={salvarTemplate}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700"
+            disabled={isSaving}
+            className={`px-6 py-2 rounded-lg font-bold transition flex items-center gap-2 ${
+              isSaving 
+                ? 'bg-blue-800 text-blue-200 cursor-not-allowed' 
+                : 'bg-blue-600 text-white hover:bg-blue-500'
+            }`}
           >
-            💾 Salvar
+            {isSaving ? (
+              <>
+                <span className="animate-spin">⏳</span> Salvando...
+              </>
+            ) : (
+              <>💾 Salvar</>
+            )}
           </button>
         </div>
       </header>
 
       {/* MODAL DE CARREGAR */}
+      {showAssetPicker && assetPickerConfig && (
+        <AssetPicker
+          folder={assetPickerConfig.folder}
+          onSelect={(url) => {
+            assetPickerConfig.onSelect(url);
+            setShowAssetPicker(false);
+          }}
+          onClose={() => setShowAssetPicker(false)}
+        />
+      )}
+
+      {/* MODAL DE CARREGAR TEMPLATE */}
       {showLoadModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">📂 Abrir Template</h2>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col border border-gray-700">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-white">📂 Abrir Template</h2>
               <button 
                 onClick={() => setShowLoadModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className="text-gray-400 hover:text-white text-2xl transition"
               >
                 &times;
               </button>
             </div>
             
-            <div className="p-4 overflow-y-auto flex-1">
+            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
               {templatesSalvos.length === 0 ? (
                 <p className="text-center text-gray-500 py-8">Nenhum template salvo ainda.</p>
               ) : (
@@ -576,16 +626,27 @@ export default function AdminMotionBuilder() {
                     <div 
                       key={t.id} 
                       onClick={() => carregarTemplate(t)}
-                      className="border rounded-lg p-3 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition relative group"
+                      className="border border-gray-700 bg-gray-750 rounded-lg p-3 hover:border-blue-500 hover:bg-gray-700 cursor-pointer transition relative group flex gap-3 items-center"
                     >
-                      <div className="font-bold mb-1">{t.nome}</div>
-                      <div className="text-xs text-gray-500 mb-2">
-                        {t.camadas.length} camadas • {t.duracao}s
+                      {/* Thumbnail Preview */}
+                      <div className="w-16 h-16 bg-gray-900 rounded overflow-hidden flex-shrink-0 border border-gray-600">
+                        {t.thumbnail ? (
+                          <img src={t.thumbnail} alt={t.nome} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xl text-gray-500">🎬</div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold mb-1 truncate text-gray-200" title={t.nome}>{t.nome}</div>
+                        <div className="text-xs text-gray-400 mb-2">
+                          {t.camadas.length} camadas • {t.duracao}s
+                        </div>
                       </div>
                       
                       <button
                         onClick={(e) => deletarTemplateSalvo(t.id, e)}
-                        className="absolute top-2 right-2 bg-red-100 text-red-600 p-1.5 rounded hover:bg-red-200 opacity-0 group-hover:opacity-100 transition"
+                        className="absolute top-2 right-2 bg-red-900/50 text-red-400 p-1.5 rounded hover:bg-red-900 opacity-0 group-hover:opacity-100 transition"
                         title="Excluir Template"
                       >
                         🗑️
@@ -606,24 +667,33 @@ export default function AdminMotionBuilder() {
           {/* ÁREA DE PREVIEW (Cima) */}
           <div 
             ref={containerRef}
-            className="flex-1 bg-gray-200 flex items-center justify-center p-8 overflow-hidden relative"
+            className="flex-1 bg-gray-950 flex items-center justify-center p-8 overflow-hidden relative"
           >
             {!template.videoFundo ? (
-              <div className="border-4 border-dashed border-gray-400 rounded-lg p-12 text-center bg-white/50 backdrop-blur-sm">
-                <p className="text-gray-600 mb-4 font-medium">Nenhum vídeo de fundo carregado</p>
-                <label className="bg-blue-600 text-white px-6 py-3 rounded-lg cursor-pointer hover:bg-blue-700 shadow-lg transition transform hover:scale-105 active:scale-95 inline-block">
-                  📁 Upload Vídeo de Fundo (MP4)
-                  <input
-                    type="file"
-                    accept="video/mp4"
-                    onChange={handleUploadVideo}
-                    className="hidden"
-                  />
-                </label>
+              <div className="border-2 border-dashed border-gray-700 rounded-lg p-12 text-center bg-gray-800/50 backdrop-blur-sm">
+                <p className="text-gray-400 mb-6 font-medium text-lg">Nenhum vídeo de fundo carregado</p>
+                <div className="flex gap-4 justify-center">
+                  <label className="bg-blue-600 text-white px-6 py-3 rounded-lg cursor-pointer hover:bg-blue-500 shadow-lg transition transform hover:scale-105 active:scale-95 inline-block font-medium">
+                    📁 Upload Vídeo (MP4)
+                    <input
+                      type="file"
+                      accept="video/mp4"
+                      onChange={handleUploadVideo}
+                      className="hidden"
+                    />
+                  </label>
+                  
+                  <button
+                    onClick={() => openAssetPicker('backgrounds', (url) => setTemplate({ ...template, videoFundo: url }))}
+                    className="bg-purple-600 text-white px-6 py-3 rounded-lg cursor-pointer hover:bg-purple-500 shadow-lg transition transform hover:scale-105 active:scale-95 inline-block font-medium"
+                  >
+                    📚 Escolher da Biblioteca
+                  </button>
+                </div>
               </div>
             ) : (
               <div 
-                className="relative shadow-2xl overflow-hidden bg-black"
+                className="relative shadow-2xl overflow-hidden bg-black ring-1 ring-gray-800"
                 style={{
                   width: 1080,
                   height: 1920,
@@ -739,7 +809,7 @@ export default function AdminMotionBuilder() {
                   })}
                 </div>
 
-                <div className="absolute bottom-4 right-4 bg-black/70 text-white px-2 py-1 rounded text-xs pointer-events-none">
+                <div className="absolute bottom-4 right-4 bg-black/70 text-white px-2 py-1 rounded text-xs pointer-events-none font-mono">
                   ⏱️ {tempoAtual.toFixed(1)}s / {template.duracao}s
                 </div>
               </div>
@@ -747,20 +817,20 @@ export default function AdminMotionBuilder() {
           </div>
 
           {/* TIMELINE (Baixo - Fixa) */}
-          <div className="h-64 bg-white border-t border-gray-200 flex flex-col shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-20">
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50">
-              <h2 className="text-sm font-bold text-gray-700">Timeline</h2>
+          <div className="h-64 bg-gray-800 border-t border-gray-700 flex flex-col shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)] z-20">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-850">
+              <h2 className="text-sm font-bold text-gray-300 uppercase tracking-wide">Timeline</h2>
               <div className="flex gap-2">
                  <button 
                    onClick={togglePlay}
-                   className="p-1 rounded hover:bg-gray-200 text-lg"
+                   className="p-1.5 rounded hover:bg-gray-700 text-lg transition text-gray-200"
                    title={isPlaying ? "Pausar" : "Reproduzir"}
                  >
                    {isPlaying ? '⏸️' : '▶️'}
                  </button>
                  <button 
                    onClick={stopVideo}
-                   className="p-1 rounded hover:bg-gray-200 text-lg"
+                   className="p-1.5 rounded hover:bg-gray-700 text-lg transition text-gray-200"
                    title="Parar"
                  >
                    ⏹️
@@ -768,17 +838,17 @@ export default function AdminMotionBuilder() {
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 relative">
+            <div className="flex-1 overflow-y-auto p-4 relative custom-scrollbar bg-gray-900">
               
               {/* Régua de tempo */}
-              <div className="relative h-6 bg-gray-100 border-b border-gray-300 mb-4 select-none">
+              <div className="relative h-6 bg-gray-800 border-b border-gray-700 mb-4 select-none">
                 {Array.from({ length: template.duracao + 1 }).map((_, i) => (
                   <div
                     key={i}
                     className="absolute top-0 text-[10px] text-gray-500 flex flex-col items-center"
                     style={{ left: `${(i / template.duracao) * 100}%`, transform: 'translateX(-50%)' }}
                   >
-                    <div className="w-px h-2 bg-gray-400 mb-0.5"></div>
+                    <div className="w-px h-2 bg-gray-600 mb-0.5"></div>
                     <span>{i}s</span>
                   </div>
                 ))}
@@ -796,12 +866,12 @@ export default function AdminMotionBuilder() {
               <div className="space-y-1 pb-10">
                  {/* Fundo (Video Base) */}
                 <div className="flex items-center group mb-2">
-                  <div className="w-32 flex-shrink-0 text-xs font-semibold text-gray-600 truncate pr-2">
+                  <div className="w-32 flex-shrink-0 text-xs font-semibold text-gray-400 truncate pr-2">
                     🎬 Vídeo Base
                   </div>
-                  <div className="flex-1 relative h-6 bg-gray-100 rounded overflow-hidden">
-                    <div className="absolute inset-0 bg-gray-300 opacity-30 w-full"></div>
-                    <div className="h-full bg-purple-100 border border-purple-300 rounded flex items-center px-2 text-purple-800 text-xs w-full">
+                  <div className="flex-1 relative h-6 bg-gray-800 rounded overflow-hidden border border-gray-700">
+                    <div className="absolute inset-0 bg-gray-700 opacity-30 w-full"></div>
+                    <div className="h-full bg-purple-900/40 border border-purple-700 rounded flex items-center px-2 text-purple-300 text-xs w-full">
                        0s - {template.duracao}s
                     </div>
                   </div>
@@ -812,18 +882,20 @@ export default function AdminMotionBuilder() {
                   const tipoInfo = TIPOS_CAMADA.find(t => t.value === camada.tipo);
                   
                   return (
-                    <div key={camada.id} className="flex items-center group relative hover:bg-gray-50 rounded">
+                    <div key={camada.id} className="flex items-center group relative hover:bg-gray-800 rounded transition-colors">
                       {/* Nome e Ações da Camada (Esquerda) */}
-                      <div className="w-32 flex-shrink-0 flex items-center justify-between pr-2 border-r border-gray-100 mr-2">
+                      <div className="w-32 flex-shrink-0 flex items-center justify-between pr-2 border-r border-gray-700 mr-2">
                         <div 
-                          className="text-xs font-medium text-gray-700 truncate cursor-pointer hover:text-blue-600"
+                          className={`text-xs font-medium truncate cursor-pointer transition ${
+                            camadaSelecionada === camada.id ? 'text-blue-400' : 'text-gray-300 hover:text-white'
+                          }`}
                           onClick={() => setCamadaSelecionada(camada.id)}
                         >
                           {tipoInfo?.icon} {camada.nome}
                         </div>
                         <button
                           onClick={() => removerCamada(camada.id)}
-                          className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Remover Camada"
                         >
                           🗑️
@@ -831,12 +903,12 @@ export default function AdminMotionBuilder() {
                       </div>
                       
                       {/* Barra de Tempo (Direita) */}
-                      <div className="flex-1 relative h-7 bg-gray-100/50 rounded">
+                      <div className="flex-1 relative h-7 bg-gray-800/50 rounded border border-gray-700/50">
                          <div
-                          className={`absolute h-full rounded-md flex items-center px-2 text-white text-[10px] cursor-pointer transition-all shadow-sm ${
+                          className={`absolute h-full rounded-md flex items-center px-2 text-white text-[10px] cursor-pointer transition-all shadow-sm border ${
                             camadaSelecionada === camada.id
-                              ? 'bg-blue-600 ring-2 ring-blue-400 z-10'
-                              : 'bg-blue-500 hover:bg-blue-600 opacity-90 hover:opacity-100'
+                              ? 'bg-blue-600 border-blue-400 z-10'
+                              : 'bg-blue-900/60 border-blue-700 hover:bg-blue-800/80 opacity-90 hover:opacity-100'
                           }`}
                           style={{
                             left: `${(camada.inicio / template.duracao) * 100}%`,
@@ -844,9 +916,9 @@ export default function AdminMotionBuilder() {
                           }}
                           onClick={() => setCamadaSelecionada(camada.id)}
                         >
-                          <div className="truncate w-full flex justify-between">
+                          <div className="truncate w-full flex justify-between items-center">
                             <span>{ANIMACOES_ENTRADA.find(a => a.value === camada.animacaoEntrada.tipo)?.icon}</span>
-                            <span className="opacity-70 mx-1">|</span>
+                            <span className="opacity-40 mx-1">|</span>
                             <span>{ANIMACOES_SAIDA.find(a => a.value === camada.animacaoSaida?.tipo)?.icon}</span>
                           </div>
                         </div>
@@ -860,17 +932,17 @@ export default function AdminMotionBuilder() {
         </div>
 
         {/* COLUNA DIREITA: Biblioteca + Configurações (Mantida Fixa) */}
-        <div className="w-80 bg-white border-l p-0 flex flex-col shadow-xl z-30 overflow-y-auto">
+        <div className="w-80 bg-gray-800 border-l border-gray-700 p-0 flex flex-col shadow-xl z-30 overflow-y-auto custom-scrollbar">
           <div className="p-6">
             {/* Biblioteca de Camadas */}
             <div className="mb-8">
-              <h3 className="text-lg font-bold mb-4">📚 Biblioteca</h3>
+              <h3 className="text-lg font-bold mb-4 text-gray-200">📚 Biblioteca</h3>
               <div className="grid grid-cols-2 gap-2">
               {TIPOS_CAMADA.map(tipo => (
                 <button
                   key={tipo.value}
                   onClick={() => adicionarCamada(tipo.value)}
-                  className="p-3 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition"
+                  className="p-3 border border-gray-600 bg-gray-700 rounded-lg hover:border-blue-500 hover:bg-gray-600 transition text-gray-200"
                 >
                   <div className="text-2xl mb-1">{tipo.icon}</div>
                   <div className="text-xs font-semibold">{tipo.label}</div>
@@ -881,24 +953,27 @@ export default function AdminMotionBuilder() {
 
           {/* Configurações da Camada Selecionada */}
           {camadaAtual ? (
-            <div className="border-t pt-6">
-              <h3 className="text-lg font-bold mb-4">⚙️ Configurações</h3>
+            <div className="border-t border-gray-700 pt-6">
+              <h3 className="text-lg font-bold mb-4 text-blue-400 flex items-center gap-2">
+                ⚙️ Configurações
+                <span className="text-xs font-normal text-gray-500 bg-gray-900 px-2 py-0.5 rounded border border-gray-700">{camadaAtual.tipo}</span>
+              </h3>
               
               {/* Nome */}
               <div className="mb-4">
-                <label className="block text-sm font-semibold mb-1">Nome da Camada:</label>
+                <label className="block text-sm font-semibold mb-1 text-gray-400">Nome da Camada:</label>
                 <input
                   type="text"
                   value={camadaAtual.nome}
                   onChange={(e) => atualizarCamada(camadaAtual.id, { nome: e.target.value })}
-                  className="w-full px-3 py-2 border rounded"
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white focus:border-blue-500 outline-none"
                 />
               </div>
 
               {/* Upload de Imagem (se aplicável) */}
               {(camadaAtual.tipo === 'produto-preco' || camadaAtual.tipo === 'localizacao') && (
-                <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200">
-                  <label className="block text-sm font-semibold mb-2">🖼️ Imagem do Produto/Logo:</label>
+                <div className="mb-4 p-3 bg-gray-900 rounded border border-gray-700">
+                  <label className="block text-sm font-semibold mb-2 text-gray-300">🖼️ Imagem do Produto/Logo:</label>
                   
                   {!camadaAtual.conteudo?.url ? (
                     <input
@@ -920,12 +995,12 @@ export default function AdminMotionBuilder() {
                         file:mr-4 file:py-2 file:px-4
                         file:rounded-full file:border-0
                         file:text-sm file:font-semibold
-                        file:bg-blue-50 file:text-blue-700
-                        hover:file:bg-blue-100"
+                        file:bg-blue-900 file:text-blue-200
+                        hover:file:bg-blue-800 cursor-pointer"
                     />
                   ) : (
                     <div className="flex items-center gap-4">
-                      <div className="relative w-20 h-20 bg-gray-200 rounded overflow-hidden border">
+                      <div className="relative w-20 h-20 bg-gray-800 rounded overflow-hidden border border-gray-600">
                         <img 
                           src={camadaAtual.conteudo.url} 
                           alt="Preview" 
@@ -936,7 +1011,7 @@ export default function AdminMotionBuilder() {
                         onClick={() => atualizarCamada(camadaAtual.id, { 
                           conteudo: { ...camadaAtual.conteudo, url: undefined } 
                         })}
-                        className="text-sm text-red-600 hover:text-red-800 underline"
+                        className="text-sm text-red-400 hover:text-red-300 underline"
                       >
                         Remover Imagem
                       </button>
@@ -948,7 +1023,7 @@ export default function AdminMotionBuilder() {
               {/* Ajuste da Imagem (Object Fit) */}
               {(camadaAtual.tipo === 'produto-preco' || camadaAtual.tipo === 'localizacao') && (
                 <div className="mb-4">
-                  <label className="block text-sm font-semibold mb-1">📐 Ajuste da Imagem:</label>
+                  <label className="block text-sm font-semibold mb-1 text-gray-400">📐 Ajuste da Imagem:</label>
                   <div className="flex gap-2">
                     {['cover', 'contain', 'fill'].map((fit) => (
                       <button
@@ -956,13 +1031,13 @@ export default function AdminMotionBuilder() {
                         onClick={() => atualizarCamada(camadaAtual.id, {
                           estilos: { ...camadaAtual.estilos, objectFit: fit as any }
                         })}
-                        className={`px-3 py-1 text-sm border rounded ${
+                        className={`px-3 py-1 text-sm border rounded transition ${
                           (camadaAtual.estilos?.objectFit || 'cover') === fit 
                             ? 'bg-blue-600 text-white border-blue-600' 
-                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                            : 'bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600'
                         }`}
                       >
-                        {fit === 'cover' ? 'Cobrir (Cheio)' : fit === 'contain' ? 'Conter (Inteiro)' : 'Esticar'}
+                        {fit === 'cover' ? 'Cobrir' : fit === 'contain' ? 'Conter' : 'Esticar'}
                       </button>
                     ))}
                   </div>
@@ -972,7 +1047,7 @@ export default function AdminMotionBuilder() {
               {/* Texto do Conteúdo */}
               {(camadaAtual.tipo === 'produto-preco' || camadaAtual.tipo === 'preco' || camadaAtual.tipo === 'texto' || camadaAtual.tipo === 'whatsapp' || camadaAtual.tipo === 'localizacao') && (
                 <div className="mb-4">
-                  <label className="block text-sm font-semibold mb-1">
+                  <label className="block text-sm font-semibold mb-1 text-gray-400">
                     {camadaAtual.tipo === 'produto-preco' ? '📝 Preço Exemplo:' : '📝 Conteúdo do Texto:'}
                   </label>
                   <input
@@ -982,17 +1057,17 @@ export default function AdminMotionBuilder() {
                       conteudo: { ...camadaAtual.conteudo, texto: e.target.value }
                     })}
                     placeholder={camadaAtual.tipo === 'produto-preco' ? "R$ 99,90" : "Digite o texto aqui..."}
-                    className="w-full px-3 py-2 border rounded"
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white focus:border-blue-500 outline-none"
                   />
                 </div>
               )}
 
               {/* Timing */}
               <div className="mb-4">
-                <label className="block text-sm font-semibold mb-1">⏱️ Timing:</label>
+                <label className="block text-sm font-semibold mb-1 text-gray-400">⏱️ Timing:</label>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-600">Início (s)</label>
+                    <label className="text-xs text-gray-500">Início (s)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -1003,11 +1078,11 @@ export default function AdminMotionBuilder() {
                         const val = parseFloat(e.target.value);
                         atualizarCamada(camadaAtual.id, { inicio: isNaN(val) ? 0 : val });
                       }}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Fim (s)</label>
+                    <label className="text-xs text-gray-500">Fim (s)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -1018,7 +1093,7 @@ export default function AdminMotionBuilder() {
                         const val = parseFloat(e.target.value);
                         atualizarCamada(camadaAtual.id, { fim: isNaN(val) ? 0 : val });
                       }}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1026,10 +1101,10 @@ export default function AdminMotionBuilder() {
 
               {/* Posição */}
               <div className="mb-4">
-                <label className="block text-sm font-semibold mb-1">📍 Posição (%):</label>
+                <label className="block text-sm font-semibold mb-1 text-gray-400">📍 Posição (%):</label>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-600">X (horizontal)</label>
+                    <label className="text-xs text-gray-500">X (horizontal)</label>
                     <input
                       type="number"
                       min="0"
@@ -1041,11 +1116,11 @@ export default function AdminMotionBuilder() {
                           posicao: { ...camadaAtual.posicao, x: isNaN(val) ? 0 : val }
                         });
                       }}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Y (vertical)</label>
+                    <label className="text-xs text-gray-500">Y (vertical)</label>
                     <input
                       type="number"
                       min="0"
@@ -1057,7 +1132,7 @@ export default function AdminMotionBuilder() {
                           posicao: { ...camadaAtual.posicao, y: isNaN(val) ? 0 : val }
                         });
                       }}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1065,10 +1140,10 @@ export default function AdminMotionBuilder() {
 
               {/* Tamanho */}
               <div className="mb-4">
-                <label className="block text-sm font-semibold mb-1">📏 Tamanho (px):</label>
+                <label className="block text-sm font-semibold mb-1 text-gray-400">📏 Tamanho (px):</label>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-gray-600">Largura</label>
+                    <label className="text-xs text-gray-500">Largura</label>
                     <input
                       type="number"
                       min="50"
@@ -1080,11 +1155,11 @@ export default function AdminMotionBuilder() {
                           tamanho: { ...camadaAtual.tamanho, width: isNaN(val) ? 100 : val }
                         });
                       }}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600">Altura</label>
+                    <label className="text-xs text-gray-500">Altura</label>
                     <input
                       type="number"
                       min="50"
@@ -1096,7 +1171,7 @@ export default function AdminMotionBuilder() {
                           tamanho: { ...camadaAtual.tamanho, height: isNaN(val) ? 100 : val }
                         });
                       }}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
                   </div>
                 </div>
@@ -1104,7 +1179,7 @@ export default function AdminMotionBuilder() {
 
               {/* Animação de Entrada */}
               <div className="mb-4">
-                <label className="block text-sm font-semibold mb-1">🎬 Animação de Entrada:</label>
+                <label className="block text-sm font-semibold mb-1 text-gray-400">🎬 Animação de Entrada:</label>
                 <select
                   value={camadaAtual.animacaoEntrada.tipo}
                   onChange={(e) => {
@@ -1124,7 +1199,7 @@ export default function AdminMotionBuilder() {
                     }
                     atualizarCamada(camadaAtual.id, updates);
                   }}
-                  className="w-full px-3 py-2 border rounded mb-2"
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded mb-2 text-white focus:border-blue-500 outline-none"
                 >
                   {ANIMACOES_ENTRADA.map(anim => (
                     <option key={anim.value} value={anim.value}>
@@ -1133,7 +1208,7 @@ export default function AdminMotionBuilder() {
                   ))}
                 </select>
                 
-                <label className="text-xs text-gray-600">Duração (s)</label>
+                <label className="text-xs text-gray-500">Duração (s)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -1149,13 +1224,13 @@ export default function AdminMotionBuilder() {
                       }
                     });
                   }}
-                  className="w-full px-2 py-1 border rounded text-sm"
+                  className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                 />
               </div>
 
               {/* Animação de Saída */}
               <div className="mb-4">
-                <label className="block text-sm font-semibold mb-1">🎬 Animação de Saída:</label>
+                <label className="block text-sm font-semibold mb-1 text-gray-400">🎬 Animação de Saída:</label>
                 <div className="flex items-center gap-2 mb-2">
                   <input
                     type="checkbox"
@@ -1174,9 +1249,9 @@ export default function AdminMotionBuilder() {
                         });
                       }
                     }}
-                    className="w-4 h-4"
+                    className="w-4 h-4 rounded border-gray-700 bg-gray-900 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm">Ativar animação de saída</span>
+                  <span className="text-sm text-gray-300">Ativar animação de saída</span>
                 </div>
                 
                 {camadaAtual.animacaoSaida && (
@@ -1189,7 +1264,7 @@ export default function AdminMotionBuilder() {
                           tipo: e.target.value as AnimationType,
                         }
                       })}
-                      className="w-full px-3 py-2 border rounded mb-2"
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded mb-2 text-white focus:border-blue-500 outline-none"
                     >
                       {ANIMACOES_SAIDA.map(anim => (
                         <option key={anim.value} value={anim.value}>
@@ -1198,7 +1273,7 @@ export default function AdminMotionBuilder() {
                       ))}
                     </select>
                     
-                    <label className="text-xs text-gray-600">Duração (s)</label>
+                    <label className="text-xs text-gray-500">Duração (s)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -1214,7 +1289,7 @@ export default function AdminMotionBuilder() {
                           }
                         });
                       }}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
                   </>
                 )}
@@ -1222,11 +1297,11 @@ export default function AdminMotionBuilder() {
 
               {/* Configurações Específicas do Texto (Preço) dentro do Produto */}
               {camadaAtual.tipo === 'produto-preco' && (
-                <div className="mb-4 border-t pt-4">
-                  <label className="block text-sm font-semibold mb-2">🏷️ Posição e Timing do Preço:</label>
+                <div className="mb-4 border-t border-gray-700 pt-4">
+                  <label className="block text-sm font-semibold mb-2 text-yellow-500">🏷️ Posição e Timing do Preço:</label>
                   
                   <div className="mb-2">
-                    <label className="text-xs text-gray-600">Atraso na entrada (segundos)</label>
+                    <label className="text-xs text-gray-500">Atraso na entrada (segundos)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -1234,14 +1309,14 @@ export default function AdminMotionBuilder() {
                       max="5"
                       value={camadaAtual.textDelay || 0}
                       onChange={(e) => atualizarCamada(camadaAtual.id, { textDelay: parseFloat(e.target.value) })}
-                      className="w-full px-2 py-1 border rounded text-sm"
+                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                     />
-                    <p className="text-[10px] text-gray-500">Tempo após o início da camada para o preço aparecer</p>
+                    <p className="text-[10px] text-gray-600 mt-1">Tempo após o início da camada para o preço aparecer</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs text-gray-600">Offset X (px)</label>
+                      <label className="text-xs text-gray-500">Offset X (px)</label>
                       <input
                         type="number"
                         step="1"
@@ -1249,11 +1324,11 @@ export default function AdminMotionBuilder() {
                         onChange={(e) => atualizarCamada(camadaAtual.id, {
                           textPosition: { ...camadaAtual.textPosition, x: parseFloat(e.target.value) || 0, y: camadaAtual.textPosition?.y || 0 }
                         })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600">Offset Y (px)</label>
+                      <label className="text-xs text-gray-500">Offset Y (px)</label>
                       <input
                         type="number"
                         step="1"
@@ -1261,7 +1336,7 @@ export default function AdminMotionBuilder() {
                         onChange={(e) => atualizarCamada(camadaAtual.id, {
                           textPosition: { ...camadaAtual.textPosition, x: camadaAtual.textPosition?.x || 0, y: parseFloat(e.target.value) || 0 }
                         })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                       />
                     </div>
                   </div>
@@ -1270,12 +1345,12 @@ export default function AdminMotionBuilder() {
 
               {/* Estilos de Texto (se for tipo texto/preço) */}
               {(camadaAtual.tipo === 'produto-preco' || camadaAtual.tipo === 'preco' || camadaAtual.tipo === 'texto' || camadaAtual.tipo === 'whatsapp' || camadaAtual.tipo === 'localizacao') && (
-                <div className="mb-4 border-t pt-4">
-                  <label className="block text-sm font-semibold mb-2">🎨 Estilos de Texto:</label>
+                <div className="mb-4 border-t border-gray-700 pt-4">
+                  <label className="block text-sm font-semibold mb-2 text-gray-400">🎨 Estilos de Texto:</label>
                   
                   <div className="space-y-2">
                     <div>
-                      <label className="text-xs text-gray-600">Tamanho da Fonte</label>
+                      <label className="text-xs text-gray-500">Tamanho da Fonte</label>
                       <input
                         type="number"
                         min="12"
@@ -1287,54 +1362,80 @@ export default function AdminMotionBuilder() {
                             fontSize: parseInt(e.target.value),
                           }
                         })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                       />
                     </div>
                     
                     <div>
-                      <label className="text-xs text-gray-600">Cor do Texto</label>
-                      <input
-                        type="color"
-                        value={camadaAtual.estilos?.color || '#FFFFFF'}
-                        onChange={(e) => atualizarCamada(camadaAtual.id, {
-                          estilos: {
-                            ...camadaAtual.estilos,
-                            color: e.target.value,
-                          }
-                        })}
-                        className="w-full h-10 border rounded"
-                      />
+                      <label className="text-xs text-gray-500">Cor do Texto</label>
+                      <div className="flex gap-2">
+                         <input
+                          type="color"
+                          value={camadaAtual.estilos?.color || '#FFFFFF'}
+                          onChange={(e) => atualizarCamada(camadaAtual.id, {
+                            estilos: {
+                              ...camadaAtual.estilos,
+                              color: e.target.value,
+                            }
+                          })}
+                          className="w-10 h-10 border border-gray-700 rounded bg-transparent p-1 cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={camadaAtual.estilos?.color || '#FFFFFF'}
+                          onChange={(e) => atualizarCamada(camadaAtual.id, {
+                            estilos: {
+                              ...camadaAtual.estilos,
+                              color: e.target.value,
+                            }
+                          })}
+                          className="flex-1 px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none uppercase"
+                        />
+                      </div>
                     </div>
 
                     <div>
                       <div className="flex justify-between items-center">
-                        <label className="text-xs text-gray-600">Cor do Fundo</label>
+                        <label className="text-xs text-gray-500">Cor do Fundo</label>
                         {camadaAtual.estilos?.backgroundColor && camadaAtual.estilos.backgroundColor !== 'transparent' && (
                           <button 
                             onClick={() => atualizarCamada(camadaAtual.id, {
                               estilos: { ...camadaAtual.estilos, backgroundColor: 'transparent' }
                             })}
-                            className="text-[10px] text-red-500 hover:underline"
+                            className="text-[10px] text-red-400 hover:underline"
                           >
                             Remover
                           </button>
                         )}
                       </div>
-                      <input
-                        type="color"
-                        value={camadaAtual.estilos?.backgroundColor !== 'transparent' ? camadaAtual.estilos?.backgroundColor : '#ffffff'}
-                        onChange={(e) => atualizarCamada(camadaAtual.id, {
-                          estilos: {
-                            ...camadaAtual.estilos,
-                            backgroundColor: e.target.value,
-                          }
-                        })}
-                        className="w-full h-10 border rounded"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="color"
+                          value={camadaAtual.estilos?.backgroundColor !== 'transparent' ? camadaAtual.estilos?.backgroundColor : '#ffffff'}
+                          onChange={(e) => atualizarCamada(camadaAtual.id, {
+                            estilos: {
+                              ...camadaAtual.estilos,
+                              backgroundColor: e.target.value,
+                            }
+                          })}
+                          className="w-10 h-10 border border-gray-700 rounded bg-transparent p-1 cursor-pointer"
+                        />
+                         <input
+                          type="text"
+                          value={camadaAtual.estilos?.backgroundColor !== 'transparent' ? camadaAtual.estilos?.backgroundColor : 'Transparent'}
+                          onChange={(e) => atualizarCamada(camadaAtual.id, {
+                            estilos: {
+                              ...camadaAtual.estilos,
+                              backgroundColor: e.target.value,
+                            }
+                          })}
+                          className="flex-1 px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none uppercase"
+                        />
+                      </div>
                     </div>
                     
                     <div>
-                      <label className="text-xs text-gray-600">Peso da Fonte</label>
+                      <label className="text-xs text-gray-500">Peso da Fonte</label>
                       <select
                         value={camadaAtual.estilos?.fontWeight || 'normal'}
                         onChange={(e) => atualizarCamada(camadaAtual.id, {
@@ -1343,7 +1444,7 @@ export default function AdminMotionBuilder() {
                             fontWeight: e.target.value,
                           }
                         })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                       >
                         <option value="normal">Normal</option>
                         <option value="bold">Negrito</option>
@@ -1352,7 +1453,7 @@ export default function AdminMotionBuilder() {
                     </div>
 
                     <div className="col-span-2">
-                      <label className="text-xs text-gray-600">Fonte (Font Family)</label>
+                      <label className="text-xs text-gray-500">Fonte (Font Family)</label>
                       <select
                         value={camadaAtual.estilos?.fontFamily || 'Arial, sans-serif'}
                         onChange={(e) => atualizarCamada(camadaAtual.id, {
@@ -1361,7 +1462,7 @@ export default function AdminMotionBuilder() {
                             fontFamily: e.target.value,
                           }
                         })}
-                        className="w-full px-2 py-1 border rounded text-sm"
+                        className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:border-blue-500 outline-none"
                       >
                         {FONTES_DISPONIVEIS.map(font => (
                           <option key={font.value} value={font.value}>
@@ -1377,13 +1478,13 @@ export default function AdminMotionBuilder() {
               {/* Botão de Deletar */}
               <button
                 onClick={() => removerCamada(camadaAtual.id)}
-                className="w-full bg-red-600 text-white py-2 rounded-lg font-bold hover:bg-red-700 mt-4"
+                className="w-full bg-red-900/50 text-red-200 border border-red-900 py-2 rounded-lg font-bold hover:bg-red-900 mt-4 transition"
               >
                 🗑️ Deletar Camada
               </button>
             </div>
           ) : (
-            <div className="border-t pt-6 text-center text-gray-400">
+            <div className="border-t border-gray-700 pt-6 text-center text-gray-500">
               Selecione uma camada na timeline para configurar
             </div>
           )}
