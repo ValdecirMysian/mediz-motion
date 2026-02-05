@@ -6,9 +6,11 @@ import { spring, interpolate } from 'remotion';
 
 export type AnimationType = 
   | 'fade-in' | 'slide-right' | 'slide-left' | 'slide-up' | 'slide-down'
-  | 'scale-in' | 'zoom-explosion' | 'bounce' | 'rotate-in' | 'flip-in-y' | 'elastic-scale' | 'blur-in'
+| 'scale-in' | 'zoom-explosion' | 'bounce' | 'rotate-in' | 'flip-in-y' | 'flip-in-x'
+  | 'elastic-scale' | 'blur-in' | 'pop-in' | 'spiral-in' | 'swing-in'
   | 'fade-out' | 'slide-out-right' | 'slide-out-left' | 'slide-out-up' | 'slide-out-down'
-  | 'scale-out' | 'zoom-implosion' | 'rotate-out' | 'flip-out-y' | 'blur-out';
+  | 'scale-out' | 'zoom-implosion' | 'rotate-out' | 'flip-out-y' | 'flip-out-x' | 'blur-out'
+  | 'pop-out' | 'spiral-out' | 'swing-out';
 
 interface AnimationParams {
   frame: number;
@@ -186,7 +188,43 @@ export const blurIn = ({ frame, startFrame, durationInFrames }: AnimationParams)
     frame,
     [startFrame, startFrame + durationInFrames],
     [10, 0],
-    { extrapolateRight: 'clamp' }
+    { extrapolateRight: 'clamp', easing: Easing.out(Easing.ease) }
+  );
+};
+
+export const popIn = ({ frame, startFrame, durationInFrames }: AnimationParams): number => {
+  if (frame < startFrame) return 0;
+  if (frame > startFrame + durationInFrames) return 1;
+
+  return interpolate(
+    frame,
+    [startFrame, startFrame + durationInFrames * 0.6, startFrame + durationInFrames],
+    [0, 1.1, 1],
+    { extrapolateRight: 'clamp', easing: Easing.bezier(0.25, 1, 0.5, 1) }
+  );
+};
+
+export const spiralIn = ({ frame, startFrame, durationInFrames }: AnimationParams): number => {
+  if (frame < startFrame) return -180;
+  if (frame > startFrame + durationInFrames) return 0;
+
+  return interpolate(
+    frame,
+    [startFrame, startFrame + durationInFrames],
+    [-180, 0],
+    { extrapolateRight: 'clamp', easing: Easing.out(Easing.exp) }
+  );
+};
+
+export const swingIn = ({ frame, startFrame, durationInFrames }: AnimationParams): number => {
+  if (frame < startFrame) return -90;
+  if (frame > startFrame + durationInFrames) return 0;
+
+  return interpolate(
+    frame,
+    [startFrame, startFrame + durationInFrames],
+    [-90, 0],
+    { extrapolateRight: 'clamp', easing: Easing.elastic(1) }
   );
 };
 
@@ -329,7 +367,43 @@ export const blurOut = ({ frame, startFrame, durationInFrames }: AnimationParams
     frame,
     [startFrame, startFrame + durationInFrames],
     [0, 10],
-    { extrapolateRight: 'clamp' }
+    { extrapolateRight: 'clamp', easing: Easing.in(Easing.ease) }
+  );
+};
+
+export const popOut = ({ frame, startFrame, durationInFrames }: AnimationParams): number => {
+  if (frame < startFrame) return 1;
+  if (frame > startFrame + durationInFrames) return 0;
+
+  return interpolate(
+    frame,
+    [startFrame, startFrame + durationInFrames * 0.4, startFrame + durationInFrames],
+    [1, 1.1, 0],
+    { extrapolateRight: 'clamp', easing: Easing.in(Easing.ease) }
+  );
+};
+
+export const spiralOut = ({ frame, startFrame, durationInFrames }: AnimationParams): number => {
+  if (frame < startFrame) return 0;
+  if (frame > startFrame + durationInFrames) return 180;
+
+  return interpolate(
+    frame,
+    [startFrame, startFrame + durationInFrames],
+    [0, 180],
+    { extrapolateRight: 'clamp', easing: Easing.in(Easing.exp) }
+  );
+};
+
+export const swingOut = ({ frame, startFrame, durationInFrames }: AnimationParams): number => {
+  if (frame < startFrame) return 0;
+  if (frame > startFrame + durationInFrames) return 90;
+
+  return interpolate(
+    frame,
+    [startFrame, startFrame + durationInFrames],
+    [0, 90],
+    { extrapolateRight: 'clamp', easing: Easing.in(Easing.back(1.5)) }
   );
 };
 
@@ -425,6 +499,28 @@ export const getAnimationValue = (
       blur: blurIn(params)
     };
   }
+
+  if (type === 'pop-in') {
+    return {
+      opacity: fadeIn(params),
+      scale: popIn(params)
+    };
+  }
+
+  if (type === 'spiral-in') {
+    return {
+      opacity: fadeIn(params),
+      scale: scaleIn(params),
+      rotate: spiralIn(params)
+    };
+  }
+
+  if (type === 'swing-in') {
+    return {
+      opacity: fadeIn(params),
+      rotate: swingIn(params)
+    };
+  }
   
   // Animações de Saída
   if (type === 'fade-out') {
@@ -492,6 +588,28 @@ export const getAnimationValue = (
     return {
       opacity: fadeOut(params),
       blur: blurOut(params)
+    };
+  }
+
+  if (type === 'pop-out') {
+    return {
+      opacity: fadeOut(params),
+      scale: popOut(params)
+    };
+  }
+
+  if (type === 'spiral-out') {
+    return {
+      opacity: fadeOut(params),
+      scale: scaleOut(params),
+      rotate: spiralOut(params)
+    };
+  }
+
+  if (type === 'swing-out') {
+    return {
+      opacity: fadeOut(params),
+      rotate: swingOut(params)
     };
   }
   

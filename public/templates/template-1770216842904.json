@@ -9,11 +9,11 @@
       "id": "layer-1770216885676",
       "tipo": "produto-preco",
       "nome": "Produto + Preço 1",
-      "inicio": 0,
-      "fim": 5,
+      "inicio": 2,
+      "fim": 7,
       "posicao": {
-        "x": 50,
-        "y": 50
+        "x": 38,
+        "y": 62
       },
       "tamanho": {
         "width": 800,
@@ -23,20 +23,25 @@
         "tipo": "fade-in",
         "duracao": 0.5
       },
-      "textDelay": 0,
+      "textDelay": 1,
       "textPosition": {
         "x": 0,
-        "y": 0
+        "y": 150
       },
       "conteudo": {},
       "estilos": {
-        "fontSize": 40,
+        "fontSize": 80,
         "fontWeight": "normal",
-        "fontFamily": "Arial, sans-serif",
+        "fontFamily": "Arial Black, sans-serif",
         "color": "#FFFFFF",
-        "backgroundColor": "transparent",
+        "backgroundColor": "#436c88",
         "textAlign": "center"
+      },
+      "animacaoSaida": {
+        "tipo": "rotate-out",
+        "duracao": 0.5
       }
     }
-  ]
+  ],
+  "thumbnail": "/thumbnails/template-1770216842904.jpg"
 }

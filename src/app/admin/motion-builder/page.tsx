@@ -95,6 +95,9 @@ const ANIMACOES_ENTRADA: { value: AnimationType; label: string; icon: string }[]
   { value: 'flip-in-y', label: 'Girar (Flip)', icon: '↔️' },
   { value: 'elastic-scale', label: 'Elástico', icon: '🍮' },
   { value: 'blur-in', label: 'Blur In', icon: '🌫️' },
+  { value: 'pop-in', label: 'Pop (Estouro)', icon: '🎈' },
+  { value: 'spiral-in', label: 'Espiral', icon: '🌀' },
+  { value: 'swing-in', label: 'Balanço', icon: '🔔' },
 ];
 
 const ANIMACOES_SAIDA: { value: AnimationType; label: string; icon: string }[] = [
@@ -108,6 +111,9 @@ const ANIMACOES_SAIDA: { value: AnimationType; label: string; icon: string }[] =
   { value: 'rotate-out', label: 'Rotacionar Saída', icon: '🔄' },
   { value: 'flip-out-y', label: 'Girar Saída (Flip)', icon: '↔️' },
   { value: 'blur-out', label: 'Blur Out', icon: '🌫️' },
+  { value: 'pop-out', label: 'Pop Out (Estouro)', icon: '🎈' },
+  { value: 'spiral-out', label: 'Espiral Saída', icon: '🌀' },
+  { value: 'swing-out', label: 'Balanço Saída', icon: '🔔' },
 ];
 
 const TIPOS_CAMADA: { value: LayerType; label: string; icon: string; defaultSize: { width: number; height: number } }[] = [
@@ -129,6 +135,9 @@ const getMatchingExitAnimation = (entryAnim: AnimationType): AnimationType => {
     case 'rotate-in': return 'rotate-out';
     case 'flip-in-y': return 'flip-out-y';
     case 'blur-in': return 'blur-out';
+    case 'pop-in': return 'pop-out';
+    case 'spiral-in': return 'spiral-out';
+    case 'swing-in': return 'swing-out';
     case 'fade-in': return 'fade-out';
     default: return 'fade-out';
   }
@@ -485,9 +494,23 @@ export default function AdminMotionBuilder() {
            style.opacity = eased;
            break;
         case 'blur-in':
-           style.filter = `blur(${(1 - eased) * 10}px)`;
-           style.opacity = eased;
-           break;
+          style.filter = `blur(${(1 - eased) * 10}px)`;
+          style.opacity = eased;
+          break;
+        case 'pop-in':
+          const pop = eased < 0.6 ? eased * 1.83 : 1.1 - (eased - 0.6) * 0.25; // Aproximação visual do bezier
+          style.transform = `translate(-50%, -50%) scale(${Math.min(1, pop)})`;
+          style.opacity = eased;
+          break;
+        case 'spiral-in':
+          style.transform = `translate(-50%, -50%) rotate(${(1 - eased) * -180}deg) scale(${eased})`;
+          style.opacity = eased;
+          break;
+        case 'swing-in':
+          style.transform = `translate(-50%, -50%) rotate(${(1 - eased) * -90}deg)`;
+          style.transformOrigin = 'top center';
+          style.opacity = eased;
+          break;
       }
     }
     
@@ -533,9 +556,23 @@ export default function AdminMotionBuilder() {
            style.opacity = 1 - eased;
            break;
         case 'blur-out':
-           style.filter = `blur(${eased * 10}px)`;
-           style.opacity = 1 - eased;
-           break;
+          style.filter = `blur(${eased * 10}px)`;
+          style.opacity = 1 - eased;
+          break;
+        case 'pop-out':
+          const pop = eased < 0.2 ? 1 + eased * 0.5 : 1.1 - (eased - 0.2) * 1.375;
+          style.transform = `translate(-50%, -50%) scale(${Math.max(0, pop)})`;
+          style.opacity = 1 - eased;
+          break;
+        case 'spiral-out':
+          style.transform = `translate(-50%, -50%) rotate(${eased * 180}deg) scale(${1 - eased})`;
+          style.opacity = 1 - eased;
+          break;
+        case 'swing-out':
+          style.transform = `translate(-50%, -50%) rotate(${eased * 90}deg)`;
+          style.transformOrigin = 'top center';
+          style.opacity = 1 - eased;
+          break;
       }
     }
 
