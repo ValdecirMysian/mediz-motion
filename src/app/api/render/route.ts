@@ -1,96 +1,121 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bundle } from '@remotion/bundler';
-import { renderMedia, selectComposition } from '@remotion/renderer';
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
+import { renderMediaOnLambda, speculateFunctionName } from '@remotion/lambda/client';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { DISK, RAM, REGION, SITE_NAME, TIMEOUT } from '../../../../../config.mjs';
+
+// Configuração do cliente S3
+const s3Client = new S3Client({
+  region: REGION,
+  credentials: {
+    accessKeyId: process.env.REMOTION_AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.REMOTION_AWS_SECRET_ACCESS_KEY || '',
+  },
+});
+
+// Nome do bucket (hardcoded pelo deploy ou pode vir de env)
+// Dica: Use o mesmo nome que apareceu no 'npm run deploy'
+const BUCKET_NAME = 'remotionlambda-useast1-f6gpclay1c'; 
+
+// Helper: Upload de Base64 para S3
+async function uploadBase64ToS3(base64Data: string, folder: string): Promise<string> {
+  const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) {
+    return base64Data; // Não é base64 ou inválido
+  }
+
+  const type = matches[1];
+  const buffer = Buffer.from(matches[2], 'base64');
+  
+  let ext = 'bin';
+  if (type.includes('image/png')) ext = 'png';
+  else if (type.includes('image/jpeg')) ext = 'jpg';
+  else if (type.includes('video/mp4')) ext = 'mp4';
+
+  const filename = `${folder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
+
+  await s3Client.send(new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: filename,
+    Body: buffer,
+    ContentType: type,
+    ACL: 'public-read', // Opcional, dependendo da config do bucket
+  }));
+
+  return `https://${BUCKET_NAME}.s3.${REGION}.amazonaws.com/${filename}`;
+}
+
+// Helper: Percorre o objeto recursivamente e faz upload de tudo que for Base64
+async function processAssets(obj: any): Promise<any> {
+  if (!obj) return obj;
+  if (Array.isArray(obj)) {
+    return Promise.all(obj.map(item => processAssets(item)));
+  }
+  if (typeof obj === 'object') {
+    const newObj: any = { ...obj };
+    for (const key in newObj) {
+      const value = newObj[key];
+      if (typeof value === 'string' && value.startsWith('data:')) {
+        console.log(`📤 Uploading asset for key: ${key}`);
+        newObj[key] = await uploadBase64ToS3(value, 'uploads');
+      } else if (typeof value === 'object') {
+        newObj[key] = await processAssets(value);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { template, dados } = body;
+    let { template, dados } = body;
 
     if (!template || !dados) {
-      return NextResponse.json(
-        { error: 'Missing template or dados' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing template or dados' }, { status: 400 });
     }
 
-    console.log('🎬 Starting render process...');
+    console.log('🚀 Iniciando processo via AWS Lambda...');
 
-    // 1. Bundle the Remotion project
-    // In production/serverless, you might want to pre-bundle or cache this.
-    // For local/VPS, bundling on request is okay but adds delay.
-    const entryPoint = path.join(process.cwd(), 'src/remotion/index.ts');
+    // 1. Upload de Assets (Base64 -> S3)
+    // Isso transforma imagens locais em URLs públicas que a Lambda consegue acessar
+    console.log('☁️ Enviando assets para o S3...');
+    template = await processAssets(template);
+    dados = await processAssets(dados);
+
+    // 2. Acionar Renderização na Lambda
+    console.log('⚡ Invocando Lambda...');
     
-    console.log('📦 Bundling...', entryPoint);
-    const bundleLocation = await bundle({
-      entryPoint,
-      // If you are in a serverless environment, you might need extra config here
-      // webpackOverride: (config) => config,
-    });
-
-    // 2. Select the composition
-    const compositionId = 'MedizMotionTeste';
-    const composition = await selectComposition({
-      serveUrl: bundleLocation,
-      id: compositionId,
+    const { renderId, bucketName } = await renderMediaOnLambda({
+      region: REGION,
+      functionName: speculateFunctionName({
+        diskSizeInMb: DISK,
+        memorySizeInMb: RAM,
+        timeoutInSeconds: TIMEOUT,
+      }),
+      serveUrl: SITE_NAME,
+      composition: 'MedizMotionTeste',
       inputProps: {
         template,
         dados,
       },
-    });
-
-    if (!composition) {
-      return NextResponse.json(
-        { error: `Composition ${compositionId} not found` },
-        { status: 404 }
-      );
-    }
-
-    // 3. Define output path
-    const fileName = `video-${Date.now()}.mp4`;
-    const outputDir = path.join(process.cwd(), 'public', 'renders');
-    
-    // Ensure directory exists
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-    
-    const outputPath = path.join(outputDir, fileName);
-
-    console.log('🎥 Rendering to:', outputPath);
-
-    // 4. Render the video
-    await renderMedia({
-      composition,
-      serveUrl: bundleLocation,
       codec: 'h264',
-      outputLocation: outputPath,
-      inputProps: {
-        template,
-        dados,
-      },
-      // You can adjust concurrency/memory here
     });
 
-    console.log('✅ Render complete!');
-
-    // 5. Return the URL
-    // Assuming the app is served at root. Adjust if served under a subpath.
-    const publicUrl = `/renders/${fileName}`;
+    console.log(`✅ Renderização iniciada! ID: ${renderId}`);
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      renderId,
+      bucketName,
+      message: 'Renderização iniciada na nuvem. Verifique o status.'
     });
 
   } catch (error: any) {
-    console.error('❌ Render error:', error);
+    console.error('❌ Erro na Lambda:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to render video',
+        error: 'Failed to start cloud render',
         details: error.message 
       },
       { status: 500 }

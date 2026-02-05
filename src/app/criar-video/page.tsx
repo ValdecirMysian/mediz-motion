@@ -219,11 +219,18 @@ export default function CriarVideo() {
     setProdutos(novosProdutos);
   };
 
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [progress, setProgress] = useState<number>(0);
+
   const gerarVideo = async () => {
     setIsRendering(true);
     setVideoUrl(null);
+    setProgress(0);
+    setStatusMessage('Iniciando...');
 
     try {
+      // 1. Iniciar Renderização (Upload + Lambda Trigger)
+      setStatusMessage('Enviando imagens para a nuvem...');
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -236,15 +243,47 @@ export default function CriarVideo() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao gerar vídeo');
+        throw new Error(data.error || 'Erro ao iniciar renderização');
       }
 
-      setVideoUrl(data.url);
-      
-    } catch (error) {
+      const { renderId, bucketName } = data;
+      setStatusMessage('Renderizando na AWS Lambda...');
+
+      // 2. Polling de Status
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch('/api/render/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ renderId, bucketName })
+          });
+          
+          const statusData = await statusRes.json();
+
+          if (statusData.type === 'error') {
+            clearInterval(pollInterval);
+            throw new Error(statusData.message);
+          }
+
+          if (statusData.type === 'done') {
+            clearInterval(pollInterval);
+            setVideoUrl(statusData.url);
+            setStatusMessage('Concluído!');
+            setIsRendering(false);
+          } else if (statusData.type === 'progress') {
+            const p = Math.round(statusData.progress * 100);
+            setProgress(p);
+            setStatusMessage(`Renderizando: ${p}%`);
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
+          // Não para o polling por erro de rede temporário, mas idealmente teria limite de tentativas
+        }
+      }, 2000);
+
+    } catch (error: any) {
       console.error('Erro na renderização:', error);
-      alert('Falha ao gerar o vídeo. Verifique o console.');
-    } finally {
+      alert(`Falha ao gerar o vídeo: ${error.message}`);
       setIsRendering(false);
     }
   };
@@ -561,9 +600,20 @@ export default function CriarVideo() {
                   `}
                 >
                   {isRendering ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin text-2xl">⏳</span> Gerando Vídeo... (Aguarde)
-                    </span>
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="animate-spin text-2xl">⏳</span> 
+                        <span>{statusMessage}</span>
+                      </div>
+                      {progress > 0 && (
+                        <div className="w-full bg-gray-900 rounded-full h-2 mt-1 overflow-hidden border border-gray-600">
+                          <div 
+                            className="bg-green-500 h-full transition-all duration-500 ease-out"
+                            style={{ width: `${progress}%` }}
+                          ></div>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     '🎬 Gerar Vídeo MP4'
                   )}

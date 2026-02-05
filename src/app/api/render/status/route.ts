@@ -1,30 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { renderQueue } from '@/lib/renderQueue';
+import { getRenderProgress } from '@remotion/lambda/client';
+import { REGION } from '../../../../../../config.mjs';
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const jobId = searchParams.get('id');
+    const body = await req.json();
+    const { renderId, bucketName } = body;
 
-    if (!jobId) {
-      return NextResponse.json({ error: 'Job ID missing' }, { status: 400 });
+    if (!renderId || !bucketName) {
+      return NextResponse.json({ error: 'Missing renderId or bucketName' }, { status: 400 });
     }
 
-    const job = renderQueue.getJob(jobId);
-
-    if (!job) {
-      return NextResponse.json({ error: 'Job not found' }, { status: 404 });
-    }
-
-    const estimatedTime = renderQueue.getEstimatedTime(jobId);
-
-    return NextResponse.json({
-      success: true,
-      job,
-      estimatedTime
+    const progress = await getRenderProgress({
+      renderId,
+      bucketName,
+      functionName: 'remotion-render-4-0-417-mem2048mb-disk10240mb-240sec', // Melhor pegar dinâmico se possível, mas ok hardcoded por enquanto
+      region: REGION,
     });
 
-  } catch (error) {
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    if (progress.fatalErrorEncountered) {
+      return NextResponse.json({
+        type: 'error',
+        message: progress.errors[0]?.message || 'Unknown error',
+        logs: progress.errors[0]?.stack
+      });
+    }
+
+    if (progress.done) {
+      return NextResponse.json({
+        type: 'done',
+        url: progress.outputFile,
+        size: progress.outputSizeInBytes
+      });
+    }
+
+    return NextResponse.json({
+      type: 'progress',
+      progress: progress.overallProgress
+    });
+
+  } catch (error: any) {
+    console.error('Check status error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
